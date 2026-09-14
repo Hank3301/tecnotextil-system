@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Adições para o TecnoTêxtil
+.vscode/
+*.db
