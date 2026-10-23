@@ -1,10 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
 from app.models.models import Rolo, ReservaTemporaria, LoteTingimento, Tecido
 from app.schemas.schemas import ReservaCreate
+from app.utils import utcnow
 
 # Regra de Negócio RN-02: Tempo limite de bloqueio temporário
 TEMPO_EXPIRACAO_MINUTOS = 20
@@ -18,7 +19,7 @@ class ReservaService:
         Varre o banco em busca de reservas 'ATIVAS' cuja data de expiração já passou,
         libera o rolo (retorna para 'DISPONIVEL') e atualiza o status para 'EXPIRADA'.
         """
-        agora = datetime.utcnow()
+        agora = utcnow()
         reservas_vencidas = (
             db.query(ReservaTemporaria)
             .filter(
@@ -107,7 +108,7 @@ class ReservaService:
             )
 
         # 5. Calcula o timestamp exato de expiração (20 min)
-        agora = datetime.utcnow()
+        agora = utcnow()
         expiracao = agora + timedelta(minutes=TEMPO_EXPIRACAO_MINUTOS)
 
         # 6. Registra a reserva e altera o status do rolo para RESERVADO

@@ -1,0 +1,197 @@
+import pytest
+
+from app.models.models import Usuario
+from app.security import verificar_senha
+
+TECIDO = {
+    "cd_tecido": "TEC-LIN-02", "nm_tecido": "Linho Misto", "ds_composicao": "55% Linho 45% Algodão",
+    "vl_largura_metros": 1.4, "vl_gramatura": 160, "vl_preco_metro": 42.9,
+}
+
+
+# ----------------------------- Tecidos -----------------------------
+def test_tecido_crud_completo(client):
+    r = client.post("/api/v1/tecidos", json=TECIDO)
+    assert r.status_code == 201, r.text
+    id_tecido = r.json()["id_tecido"]
+
+    assert client.post("/api/v1/tecidos", json=TECIDO).status_code == 409  # código duplicado
+
+    r = client.patch(f"/api/v1/tecidos/{id_tecido}", json={"vl_preco_metro": 50})
+    assert r.status_code == 200 and r.json()["vl_preco_metro"] == pytest.approx(50)
+    assert r.json()["nm_tecido"] == "Linho Misto"  # campos omitidos permanecem
+
+    assert len(client.get("/api/v1/tecidos", params={"busca": "linho"}).json()) == 1
+    assert client.get("/api/v1/tecidos", params={"busca": "inexistente"}).json() == []
+
+    assert client.delete(f"/api/v1/tecidos/{id_tecido}").status_code == 204
+    assert client.get(f"/api/v1/tecidos/{id_tecido}").status_code == 404
+
+
+def test_tecido_validacao_422(client):
+    assert client.post("/api/v1/tecidos", json={**TECIDO, "vl_largura_metros": -1}).status_code == 422
+
+
+def test_tecido_com_lotes_nao_pode_ser_excluido(client, lote):
+    assert client.delete(f"/api/v1/tecidos/{lote['id_tecido']}").status_code == 409
+
+
+def test_patch_codigo_de_tecido_para_um_ja_existente(client, lote):
+    outro = client.post("/api/v1/tecidos", json=TECIDO).json()
+    r = client.patch(f"/api/v1/tecidos/{outro['id_tecido']}", json={"cd_tecido": "TEC-ALG-01"})
+    assert r.status_code == 409
+
+
+# ----------------------------- Lotes -----------------------------
+def test_lote_de_tecido_inexistente(client):
+    r = client.post("/api/v1/lotes", json={
+        "id_tecido": 999, "cd_partida": "P-1", "dt_fabricacao": "2026-09-15", "ds_tonalidade_cor": "Azul",
+    })
+    assert r.status_code == 404
+
+
+def test_lote_partida_duplicada_no_mesmo_tecido(client, lote):
+    r = client.post("/api/v1/lotes", json={
+        "id_tecido": lote["id_tecido"], "cd_partida": lote["cd_partida"],
+        "dt_fabricacao": "2026-09-16", "ds_tonalidade_cor": "Vermelho",
+    })
+    assert r.status_code == 409
+
+
+def test_lote_detalhe_traz_rolos_e_lista_nao(client, lote, novo_rolo):
+    novo_rolo(30)
+    detalhe = client.get(f"/api/v1/lotes/{lote['id_lote']}").json()
+    assert len(detalhe["rolos"]) == 1
+    listagem = client.get("/api/v1/lotes", params={"id_tecido": lote["id_tecido"]}).json()
+    assert len(listagem) == 1 and "rolos" not in listagem[0]
+
+
+def test_lote_patch_nao_troca_de_tecido_e_exclusao_bloqueada_com_rolos(client, lote, novo_rolo):
+    r = client.patch(f"/api/v1/lotes/{lote['id_lote']}", json={"ds_tonalidade_cor": "Verde", "id_tecido": 999})
+    assert r.status_code == 200
+    assert r.json()["ds_tonalidade_cor"] == "Verde" and r.json()["id_tecido"] == lote["id_tecido"]
+
+    novo_rolo(10)
+    assert client.delete(f"/api/v1/lotes/{lote['id_lote']}").status_code == 409
+
+
+# ----------------------------- Rolos -----------------------------
+def test_rolo_nasce_com_saldo_cheio_e_cliente_nao_forja_estado(client, lote):
+    r = client.post("/api/v1/rolos", json={
+        "id_lote": lote["id_lote"], "cd_barras": "ROL-00001", "qt_metragem_inicial": 50,
+        "ds_localizacao": "A1", "qt_metragem_atual": 1, "st_rolo": "INATIVO", "fl_retalho": True,
+    })
+    assert r.status_code == 201, r.text
+    corpo = r.json()
+    assert corpo["qt_metragem_atual"] == pytest.approx(50)
+    assert corpo["st_rolo"] == "DISPONIVEL" and corpo["fl_retalho"] is False
+
+
+def test_rolo_codigo_de_barras_duplicado_e_lote_inexistente(client, lote, novo_rolo):
+    rolo = novo_rolo(10)
+    base = {"qt_metragem_inicial": 5, "ds_localizacao": "A1"}
+    dup = client.post("/api/v1/rolos", json={**base, "id_lote": lote["id_lote"], "cd_barras": rolo["cd_barras"]})
+    assert dup.status_code == 409
+    sem_lote = client.post("/api/v1/rolos", json={**base, "id_lote": 999, "cd_barras": "ROL-99999"})
+    assert sem_lote.status_code == 404
+
+
+def test_rolo_busca_por_codigo_de_barras_e_filtros(client, novo_rolo):
+    rolo = novo_rolo(10)
+    r = client.get(f"/api/v1/rolos/codigo-barras/{rolo['cd_barras']}")
+    assert r.status_code == 200 and r.json()["id_rolo"] == rolo["id_rolo"]
+    assert client.get("/api/v1/rolos/codigo-barras/NAO-EXISTE").status_code == 404
+
+    assert len(client.get("/api/v1/rolos", params={"cd_tecido": "TEC-ALG-01"}).json()) == 1
+    assert client.get("/api/v1/rolos", params={"fl_retalho": True}).json() == []
+    assert client.get("/api/v1/rolos", params={"st_rolo": "DISPONIVEL"}).json()[0]["id_rolo"] == rolo["id_rolo"]
+
+
+def test_rolo_patch_status_manual(client, novo_rolo):
+    rolo = novo_rolo(10)
+    url = f"/api/v1/rolos/{rolo['id_rolo']}"
+    r = client.patch(url, json={"ds_localizacao": "B2", "st_rolo": "BLOQUEADO"})
+    assert r.status_code == 200
+    assert r.json()["ds_localizacao"] == "B2" and r.json()["st_rolo"] == "BLOQUEADO"
+
+    # estados operacionais não podem ser definidos à mão
+    assert client.patch(url, json={"st_rolo": "EM_CORTE"}).status_code == 400
+    assert client.patch(url, json={"st_rolo": "QUALQUER"}).status_code == 422
+
+
+def test_rolo_em_operacao_nao_aceita_troca_manual_de_status(client, novo_rolo):
+    rolo = novo_rolo(10)
+    client.post("/api/v1/vendas/reservas", json={"id_rolo": rolo["id_rolo"], "qt_metragem_reservada": 5})
+    r = client.patch(f"/api/v1/rolos/{rolo['id_rolo']}", json={"st_rolo": "INATIVO"})
+    assert r.status_code == 409
+
+
+def test_rolo_com_historico_nao_pode_ser_excluido(client, novo_rolo):
+    com_historico, limpo = novo_rolo(10), novo_rolo(10)
+    client.post("/api/v1/vendas/reservas", json={"id_rolo": com_historico["id_rolo"], "qt_metragem_reservada": 5})
+    assert client.delete(f"/api/v1/rolos/{com_historico['id_rolo']}").status_code == 409
+    assert client.delete(f"/api/v1/rolos/{limpo['id_rolo']}").status_code == 204
+
+
+# ----------------------------- Defeitos -----------------------------
+def test_defeito_crud_e_validacoes(client, novo_rolo):
+    rolo = novo_rolo(20)
+    base = f"/api/v1/rolos/{rolo['id_rolo']}/defeitos"
+
+    assert client.post(base, json={"qt_metro_inicio": 5, "qt_metro_fim": 5, "ds_defeito": "Mancha"}).status_code == 422
+    assert client.post(base, json={"qt_metro_inicio": 15, "qt_metro_fim": 25, "ds_defeito": "Mancha"}).status_code == 400
+
+    r = client.post(base, json={"qt_metro_inicio": 0, "qt_metro_fim": 2, "ds_defeito": "Mancha de óleo"})
+    assert r.status_code == 201
+    id_defeito = r.json()["id_defeito"]
+    assert len(client.get(base).json()) == 1
+    assert len(client.get(f"/api/v1/rolos/{rolo['id_rolo']}").json()["defeitos"]) == 1
+
+    assert client.delete(f"{base}/{id_defeito}").status_code == 204
+    assert client.delete(f"{base}/{id_defeito}").status_code == 404
+
+
+# ----------------------------- Usuários -----------------------------
+def test_usuario_nao_expoe_senha_e_guarda_hash(client, db_session):
+    r = client.post("/api/v1/usuarios", json={
+        "nm_usuario": "Vera Vendedora", "cd_cpf": "111.444.777-35", "ds_cargo": "VENDEDOR",
+        "ds_login": "Vera.V", "ds_senha": "senha-segura-1",
+    })
+    assert r.status_code == 201, r.text
+    corpo = r.json()
+    assert "ds_senha" not in corpo and "ds_senha_hash" not in corpo
+    assert corpo["cd_cpf"] == "11144477735" and corpo["ds_login"] == "vera.v"
+
+    salvo = db_session.get(Usuario, corpo["id_usuario"])
+    assert salvo.ds_senha_hash.startswith("scrypt$") and "senha-segura-1" not in salvo.ds_senha_hash
+    assert verificar_senha("senha-segura-1", salvo.ds_senha_hash)
+
+
+def test_usuario_validacoes_e_duplicidade(client, cortador):
+    base = {"nm_usuario": "Outro Nome", "cd_cpf": "11144477735", "ds_cargo": "VENDEDOR",
+            "ds_login": "outro", "ds_senha": "12345678"}
+    assert client.post("/api/v1/usuarios", json={**base, "cd_cpf": "11111111111"}).status_code == 422
+    assert client.post("/api/v1/usuarios", json={**base, "ds_senha": "curta"}).status_code == 422
+    assert client.post("/api/v1/usuarios", json={**base, "ds_login": "cortador"}).status_code == 409
+    assert client.post("/api/v1/usuarios", json={**base, "cd_cpf": "52998224725"}).status_code == 409
+    assert client.post("/api/v1/usuarios", json=base).status_code == 201
+
+
+def test_usuario_patch_troca_senha_e_lista_por_cargo(client, db_session, cortador):
+    antigo = db_session.get(Usuario, cortador["id_usuario"]).ds_senha_hash
+    r = client.patch(f"/api/v1/usuarios/{cortador['id_usuario']}", json={"ds_senha": "nova-senha-123"})
+    assert r.status_code == 200
+    db_session.expire_all()
+    novo = db_session.get(Usuario, cortador["id_usuario"]).ds_senha_hash
+    assert novo != antigo and verificar_senha("nova-senha-123", novo)
+
+    assert len(client.get("/api/v1/usuarios", params={"ds_cargo": "cortador"}).json()) == 1
+    assert client.get("/api/v1/usuarios", params={"ds_cargo": "GERENTE"}).json() == []
+
+
+def test_usuario_com_ordens_nao_pode_ser_excluido(client, cortador, novo_rolo):
+    rolo = novo_rolo(50)
+    ordem = client.post("/api/v1/corte/ordens", json={"id_rolo": rolo["id_rolo"], "qt_metragem_solicitada": 10}).json()
+    client.post(f"/api/v1/corte/ordens/{ordem['id_ordem']}/executar",
+                json={"id_usuario_cortador": cortador["id_usuario"], "qt_sobra_informada": 40})
+    assert client.delete(f"/api/v1/usuarios/{cortador['id_usuario']}").status_code == 409
