@@ -6,13 +6,16 @@ from app.database import engine, Base
 from app.models.models import *  # noqa: F401,F403  (registra as tabelas no metadata)
 from app.routers import vendas, corte, tecidos, lotes, rolos, usuarios
 from app.auth.router import router as auth_router
+from app.services.background_tasks import scheduler_lifespan
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
     # Cria as tabelas no startup (e não no import, para não tocar o banco em testes)
     Base.metadata.create_all(bind=engine)
-    yield
+    # Start the background scheduler
+    async with scheduler_lifespan(app):
+        yield
 
 
 app = FastAPI(
