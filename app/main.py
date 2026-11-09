@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.database import engine, Base
 from app.models.models import *  # noqa: F401,F403  (registra as tabelas no metadata)
 from app.routers import vendas, corte, tecidos, lotes, rolos, usuarios
+from app.auth.router import router as auth_router
 
 
 @asynccontextmanager
@@ -26,6 +27,9 @@ app.include_router(tecidos.router)
 app.include_router(lotes.router)
 app.include_router(rolos.router)
 app.include_router(usuarios.router)
+
+# Autenticação
+app.include_router(auth_router)
 
 # Operação
 app.include_router(vendas.router)

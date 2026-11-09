@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.models import Usuario
 from app.schemas.schemas import UsuarioCreate, UsuarioUpdate
-from app.security import hash_senha
+from app.auth.security import hash_senha
 from app.services.common import conflito, confirmar, obter_ou_404
 
 

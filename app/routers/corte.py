@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_cortador
 from app.database import get_db
 from app.schemas.schemas import (
     OrdemCorteCreate,
@@ -13,7 +14,8 @@ from app.services.corte_service import CorteService
 
 router = APIRouter(
     prefix="/api/v1/corte",
-    tags=["Mesa de Corte & Gestão de Retalhos"]
+    tags=["Mesa de Corte & Gestão de Retalhos"],
+    dependencies=[Depends(require_cortador)]
 )
 
 

@@ -3,11 +3,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_gerente
 from app.database import get_db
 from app.schemas.schemas import UsuarioCreate, UsuarioResponse, UsuarioUpdate
 from app.services.usuario_service import UsuarioService
 
-router = APIRouter(prefix="/api/v1/usuarios", tags=["Cadastro de Usuários"])
+router = APIRouter(prefix="/api/v1/usuarios", tags=["Cadastro de Usuários"], dependencies=[Depends(require_gerente)])
 
 
 @router.post("", response_model=UsuarioResponse, status_code=status.HTTP_201_CREATED, summary="Cadastra um usuário")

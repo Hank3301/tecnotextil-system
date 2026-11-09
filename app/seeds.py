@@ -9,7 +9,7 @@ from datetime import date
 
 from app.database import SessionLocal, engine, Base
 from app.models.models import Tecido, LoteTingimento, Rolo, Usuario, MapeamentoDefeito
-from app.security import hash_senha
+from app.auth.security import hash_senha
 
 
 def _obter_ou_criar(db, modelo, filtro: dict, valores: dict):
@@ -52,6 +52,18 @@ def popular_banco():
         )
         if novo:
             criados.append(f"usuário vendedor (id={vendedor.id_usuario}, login=vendedor, senha=vendedor123)")
+
+        gerente, novo = _obter_ou_criar(
+            db, Usuario, {"ds_login": "gerente"},
+            {
+                "nm_usuario": "Gabriel Gerente",
+                "cd_cpf": "22255588899",
+                "ds_cargo": "GERENTE",
+                "ds_senha_hash": hash_senha("gerente123"),
+            },
+        )
+        if novo:
+            criados.append(f"usuário gerente (id={gerente.id_usuario}, login=gerente, senha=gerente123)")
 
         # 2. Tecido
         tecido, novo = _obter_ou_criar(

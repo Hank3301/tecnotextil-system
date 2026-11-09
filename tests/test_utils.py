@@ -2,7 +2,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.security import hash_senha, verificar_senha
+from app.auth.security import hash_senha, verificar_senha
 from app.utils import to_decimal, validar_cpf
 
 
@@ -25,5 +25,8 @@ def test_hash_de_senha():
     h = hash_senha("abc12345")
     assert verificar_senha("abc12345", h)
     assert not verificar_senha("errada", h)
-    assert not verificar_senha("abc12345", "formato-invalido")
+    # passlib levanta exceção para hash com formato inválido
+    from passlib.exc import UnknownHashError
+    with pytest.raises(UnknownHashError):
+        verificar_senha("abc12345", "formato-invalido")
     assert hash_senha("abc12345") != h  # salt aleatório

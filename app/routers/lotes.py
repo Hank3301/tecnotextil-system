@@ -3,13 +3,14 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_gerente
 from app.database import get_db
 from app.schemas.schemas import (
     LoteTingimentoCreate, LoteTingimentoResponse, LoteTingimentoResumo, LoteTingimentoUpdate,
 )
 from app.services.lote_service import LoteService
 
-router = APIRouter(prefix="/api/v1/lotes", tags=["Cadastro de Lotes de Tingimento"])
+router = APIRouter(prefix="/api/v1/lotes", tags=["Cadastro de Lotes de Tingimento"], dependencies=[Depends(require_gerente)])
 
 
 @router.post(

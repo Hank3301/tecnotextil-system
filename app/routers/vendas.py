@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.auth.dependencies import require_vendedor
 from app.database import get_db
 from app.schemas.schemas import (
     LoteTingimentoResponse,
@@ -12,7 +13,8 @@ from app.services.reserva_service import ReservaService
 
 router = APIRouter(
     prefix="/api/v1/vendas",
-    tags=["Vendas & Reservas Temporárias"]
+    tags=["Vendas & Reservas Temporárias"],
+    dependencies=[Depends(require_vendedor)]
 )
 
 

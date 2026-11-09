@@ -67,71 +67,71 @@ def test_baixar_metragem_aceita_decimal_vindo_do_banco_e_float_da_api():
 
 
 # ----------------------------- emissão da ordem -----------------------------
-def test_ordem_rejeita_metragem_maior_que_saldo(client, novo_rolo):
-    rolo = novo_rolo(10)
-    r = emitir(client, rolo, 10.5)
+def test_ordem_rejeita_metragem_maior_que_saldo(client_cortador, rolo_factory):
+    rolo = rolo_factory(10)
+    r = emitir(client_cortador, rolo, 10.5)
     assert r.status_code == 400
     assert "saldo" in r.json()["detail"]
-    assert rolo_atual(client, rolo)["st_rolo"] == "DISPONIVEL"
+    assert rolo_atual(client_cortador, rolo)["st_rolo"] == "DISPONIVEL"
 
 
-def test_ordem_em_rolo_inexistente(client):
-    assert client.post(ORDENS, json={"id_rolo": 999, "qt_metragem_solicitada": 1}).status_code == 404
+def test_ordem_em_rolo_inexistente(client_cortador):
+    assert client_cortador.post(ORDENS, json={"id_rolo": 999, "qt_metragem_solicitada": 1}).status_code == 404
 
 
-def test_ordem_rejeita_reserva_de_outro_rolo(client, novo_rolo):
-    rolo_a, rolo_b = novo_rolo(50), novo_rolo(50)
-    reserva = reservar(client, rolo_a, 10)
-    r = emitir(client, rolo_b, 10, id_reserva=reserva["id_reserva"])
+def test_ordem_rejeita_reserva_de_outro_rolo(client_cortador, client_vendedor, rolo_factory):
+    rolo_a, rolo_b = rolo_factory(50), rolo_factory(50)
+    reserva = reservar(client_vendedor, rolo_a, 10)
+    r = emitir(client_cortador, rolo_b, 10, id_reserva=reserva["id_reserva"])
     assert r.status_code == 400
     assert "outro rolo" in r.json()["detail"]
 
 
-def test_ordem_em_rolo_reservado_exige_id_reserva(client, novo_rolo):
-    rolo = novo_rolo(50)
-    reservar(client, rolo, 10)
-    r = emitir(client, rolo, 10)
+def test_ordem_em_rolo_reservado_exige_id_reserva(client_cortador, client_vendedor, rolo_factory):
+    rolo = rolo_factory(50)
+    reservar(client_vendedor, rolo, 10)
+    r = emitir(client_cortador, rolo, 10)
     assert r.status_code == 400
     assert "reservado" in r.json()["detail"]
 
 
-def test_ordem_rejeita_reserva_expirada(client, db_session, novo_rolo):
-    rolo = novo_rolo(50)
-    reserva = reservar(client, rolo, 10)
+def test_ordem_rejeita_reserva_expirada(client_cortador, client_vendedor, db_session, rolo_factory):
+    rolo = rolo_factory(50)
+    reserva = reservar(client_vendedor, rolo, 10)
     db_session.get(ReservaTemporaria, reserva["id_reserva"]).dt_expiracao = utcnow() - timedelta(minutes=1)
     db_session.commit()
 
-    r = emitir(client, rolo, 10, id_reserva=reserva["id_reserva"])
+    r = emitir(client_cortador, rolo, 10, id_reserva=reserva["id_reserva"])
     assert r.status_code == 400
     assert "ativa" in r.json()["detail"]
 
 
-def test_ordem_rejeita_metragem_acima_da_reservada(client, novo_rolo):
-    rolo = novo_rolo(50)
-    reserva = reservar(client, rolo, 5)
-    r = emitir(client, rolo, 6, id_reserva=reserva["id_reserva"])
+def test_ordem_rejeita_metragem_acima_da_reservada(client_cortador, client_vendedor, rolo_factory):
+    rolo = rolo_factory(50)
+    reserva = reservar(client_vendedor, rolo, 5)
+    r = emitir(client_cortador, rolo, 6, id_reserva=reserva["id_reserva"])
     assert r.status_code == 400
     assert "reservada" in r.json()["detail"]
 
 
-def test_ordem_com_reserva_confirma_reserva_e_poe_rolo_em_corte(client, db_session, novo_rolo):
-    rolo = novo_rolo(50)
-    reserva = reservar(client, rolo, 20)
-    r = emitir(client, rolo, 20, id_reserva=reserva["id_reserva"])
+def test_ordem_com_reserva_confirma_reserva_e_poe_rolo_em_corte(client_cortador, db_session, client_vendedor, rolo_factory):
+    rolo = rolo_factory(50)
+    reserva = reservar(client_vendedor, rolo, 20)
+    r = emitir(client_cortador, rolo, 20, id_reserva=reserva["id_reserva"])
     assert r.status_code == 201, r.text
     assert r.json()["st_ordem"] == "PENDENTE"
     assert r.json()["rolo"]["st_rolo"] == "EM_CORTE"
     assert db_session.get(ReservaTemporaria, reserva["id_reserva"]).st_reserva == "CONFIRMADA"
 
     # a reserva já consumida não pode gerar nova ordem
-    assert emitir(client, rolo, 20, id_reserva=reserva["id_reserva"]).status_code == 400
+    assert emitir(client_cortador, rolo, 20, id_reserva=reserva["id_reserva"]).status_code == 400
 
 
 # ----------------------------- execução / estoque / RN-05 -----------------------------
-def test_fluxo_completo_baixa_estoque(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 20).json()
-    r = executar(client, ordem["id_ordem"], cortador, sobra=30)
+def test_fluxo_completo_baixa_estoque(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 20).json()
+    r = executar(client_cortador, ordem["id_ordem"], cortador, sobra=30)
     assert r.status_code == 200, r.text
     corpo = r.json()
     assert corpo["st_ordem"] == "CONCLUIDA"
@@ -151,74 +151,74 @@ def test_fluxo_completo_baixa_estoque(client, novo_rolo, cortador):
         (8, 2.0, 6.0, False),   # acima do limite
     ],
 )
-def test_rn05_reclassifica_retalho(client, novo_rolo, cortador, inicial, corte, sobra, retalho):
-    rolo = novo_rolo(inicial)
-    ordem = emitir(client, rolo, corte).json()
-    r = executar(client, ordem["id_ordem"], cortador, sobra)
+def test_rn05_reclassifica_retalho(client_cortador, rolo_factory, cortador, inicial, corte, sobra, retalho):
+    rolo = rolo_factory(inicial)
+    ordem = emitir(client_cortador, rolo, corte).json()
+    r = executar(client_cortador, ordem["id_ordem"], cortador, sobra)
     assert r.status_code == 200, r.text
     assert r.json()["rolo"]["fl_retalho"] is retalho
     assert r.json()["rolo"]["st_rolo"] == "DISPONIVEL"
 
 
-def test_rolo_zerado_fica_inativo_e_nao_vira_retalho(client, novo_rolo, cortador):
-    rolo = novo_rolo(10)
-    ordem = emitir(client, rolo, 10).json()
-    r = executar(client, ordem["id_ordem"], cortador, sobra=0)
+def test_rolo_zerado_fica_inativo_e_nao_vira_retalho(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(10)
+    ordem = emitir(client_cortador, rolo, 10).json()
+    r = executar(client_cortador, ordem["id_ordem"], cortador, sobra=0)
     assert r.status_code == 200
     assert r.json()["rolo"]["st_rolo"] == "INATIVO"
     assert r.json()["rolo"]["fl_retalho"] is False
     assert r.json()["rolo"]["qt_metragem_atual"] == pytest.approx(0)
 
 
-def test_executar_exige_ordem_pendente(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 10).json()
-    assert executar(client, ordem["id_ordem"], cortador, 40).status_code == 200
+def test_executar_exige_ordem_pendente(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 10).json()
+    assert executar(client_cortador, ordem["id_ordem"], cortador, 40).status_code == 200
 
-    segunda = executar(client, ordem["id_ordem"], cortador, 30)
+    segunda = executar(client_cortador, ordem["id_ordem"], cortador, 30)
     assert segunda.status_code == 400
     assert "CONCLUIDA" in segunda.json()["detail"]
-    assert rolo_atual(client, rolo)["qt_metragem_atual"] == pytest.approx(40)  # não baixou duas vezes
+    assert rolo_atual(client_cortador, rolo)["qt_metragem_atual"] == pytest.approx(40)  # não baixou duas vezes
 
 
-def test_executar_ordem_cancelada_e_rejeitado(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 10).json()
-    assert client.patch(f"{ORDENS}/{ordem['id_ordem']}/cancelar").status_code == 200
-    r = executar(client, ordem["id_ordem"], cortador, 40)
+def test_executar_ordem_cancelada_e_rejeitado(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 10).json()
+    assert client_cortador.patch(f"{ORDENS}/{ordem['id_ordem']}/cancelar").status_code == 200
+    r = executar(client_cortador, ordem["id_ordem"], cortador, 40)
     assert r.status_code == 400
     assert "CANCELADA" in r.json()["detail"]
 
 
-def test_executar_ordem_inexistente(client, cortador):
-    assert executar(client, 999, cortador, 1).status_code == 404
+def test_executar_ordem_inexistente(client_cortador, cortador):
+    assert executar(client_cortador, 999, cortador, 1).status_code == 404
 
 
-def test_executar_com_cortador_inexistente_nao_altera_nada(client, novo_rolo):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 10).json()
-    r = client.post(f"{ORDENS}/{ordem['id_ordem']}/executar",
-                    json={"id_usuario_cortador": 999, "qt_sobra_informada": 40})
+def test_executar_com_cortador_inexistente_nao_altera_nada(client_cortador, rolo_factory):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 10).json()
+    r = client_cortador.post(f"{ORDENS}/{ordem['id_ordem']}/executar",
+                json={"id_usuario_cortador": 999, "qt_sobra_informada": 40})
     assert r.status_code == 404
-    assert rolo_atual(client, rolo)["st_rolo"] == "EM_CORTE"
-    assert client.get(f"{ORDENS}/{ordem['id_ordem']}").json()["st_ordem"] == "PENDENTE"
+    assert rolo_atual(client_cortador, rolo)["st_rolo"] == "EM_CORTE"
+    assert client_cortador.get(f"{ORDENS}/{ordem['id_ordem']}").json()["st_ordem"] == "PENDENTE"
 
 
-def test_sobra_maior_que_saldo_esperado_e_rejeitada(client, novo_rolo, cortador):
-    rolo = novo_rolo(10)
-    ordem = emitir(client, rolo, 4).json()
-    r = executar(client, ordem["id_ordem"], cortador, 6.5)  # esperado: 6.0
+def test_sobra_maior_que_saldo_esperado_e_rejeitada(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(10)
+    ordem = emitir(client_cortador, rolo, 4).json()
+    r = executar(client_cortador, ordem["id_ordem"], cortador, 6.5)  # esperado: 6.0
     assert r.status_code == 400
     assert "Sobra informada" in r.json()["detail"]
-    assert rolo_atual(client, rolo)["qt_metragem_atual"] == pytest.approx(10)
+    assert rolo_atual(client_cortador, rolo)["qt_metragem_atual"] == pytest.approx(10)
 
 
 # ----------------------------- conferência de perdas -----------------------------
-def test_perda_totalmente_justificada_por_defeito(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    defeito(client, rolo, 10, 11.5)  # 1,5 m de defeito
-    ordem = emitir(client, rolo, 40).json()
-    r = executar(client, ordem["id_ordem"], cortador, sobra=8.5)  # esperado 10 => perda 1,5
+def test_perda_totalmente_justificada_por_defeito(client_cortador, client_gerente, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    defeito(client_gerente, rolo, 10, 11.5)  # 1,5 m de defeito
+    ordem = emitir(client_cortador, rolo, 40).json()
+    r = executar(client_cortador, ordem["id_ordem"], cortador, sobra=8.5)  # esperado 10 => perda 1,5
     corpo = r.json()
     assert r.status_code == 200, r.text
     assert corpo["qt_perda_apurada"] == pytest.approx(1.5)
@@ -228,69 +228,69 @@ def test_perda_totalmente_justificada_por_defeito(client, novo_rolo, cortador):
     assert corpo["rolo"]["qt_metragem_atual"] == pytest.approx(8.5)  # sobra medida vira o saldo
 
 
-def test_perda_acima_dos_defeitos_gera_divergencia(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    defeito(client, rolo, 10, 11.5)
-    ordem = emitir(client, rolo, 40).json()
-    corpo = executar(client, ordem["id_ordem"], cortador, sobra=8.0).json()  # perda 2,0
+def test_perda_acima_dos_defeitos_gera_divergencia(client_cortador, client_gerente, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    defeito(client_gerente, rolo, 10, 11.5)
+    ordem = emitir(client_cortador, rolo, 40).json()
+    corpo = executar(client_cortador, ordem["id_ordem"], cortador, sobra=8.0).json()  # perda 2,0
     assert corpo["qt_perda_justificada"] == pytest.approx(1.5)
     assert corpo["qt_perda_nao_justificada"] == pytest.approx(0.5)
     assert corpo["fl_divergencia_perda"] is True
 
 
-def test_perda_sem_defeito_mapeado_gera_divergencia(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 40).json()
-    corpo = executar(client, ordem["id_ordem"], cortador, sobra=9.0).json()
+def test_perda_sem_defeito_mapeado_gera_divergencia(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 40).json()
+    corpo = executar(client_cortador, ordem["id_ordem"], cortador, sobra=9.0).json()
     assert corpo["qt_perda_apurada"] == pytest.approx(1.0)
     assert corpo["qt_perda_justificada"] == pytest.approx(0)
     assert corpo["fl_divergencia_perda"] is True
 
 
-def test_perda_dentro_da_tolerancia_nao_diverge(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 40).json()
-    corpo = executar(client, ordem["id_ordem"], cortador, sobra=9.95).json()  # perda 0,05 m
+def test_perda_dentro_da_tolerancia_nao_diverge(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 40).json()
+    corpo = executar(client_cortador, ordem["id_ordem"], cortador, sobra=9.95).json()  # perda 0,05 m
     assert corpo["fl_divergencia_perda"] is False
 
 
-def test_defeito_nao_justifica_perdas_de_dois_cortes(client, novo_rolo, cortador):
-    rolo = novo_rolo(100)
-    defeito(client, rolo, 10, 11.5)
+def test_defeito_nao_justifica_perdas_de_dois_cortes(client_cortador, client_gerente, rolo_factory, cortador):
+    rolo = rolo_factory(100)
+    defeito(client_gerente, rolo, 10, 11.5)
 
-    o1 = emitir(client, rolo, 10).json()
-    c1 = executar(client, o1["id_ordem"], cortador, sobra=88.5).json()  # perda 1,5 usa o defeito
+    o1 = emitir(client_cortador, rolo, 10).json()
+    c1 = executar(client_cortador, o1["id_ordem"], cortador, sobra=88.5).json()  # perda 1,5 usa o defeito
     assert c1["fl_divergencia_perda"] is False
 
-    o2 = emitir(client, rolo, 10).json()
-    c2 = executar(client, o2["id_ordem"], cortador, sobra=77.0).json()  # nova perda 1,5, defeito já usado
+    o2 = emitir(client_cortador, rolo, 10).json()
+    c2 = executar(client_cortador, o2["id_ordem"], cortador, sobra=77.0).json()  # nova perda 1,5, defeito já usado
     assert c2["qt_perda_justificada"] == pytest.approx(0)
     assert c2["fl_divergencia_perda"] is True
 
 
 # ----------------------------- cancelamento -----------------------------
-def test_cancelar_ordem_libera_rolo_e_cancela_reserva(client, db_session, novo_rolo):
-    rolo = novo_rolo(50)
-    reserva = reservar(client, rolo, 10)
-    ordem = emitir(client, rolo, 10, id_reserva=reserva["id_reserva"]).json()
+def test_cancelar_ordem_libera_rolo_e_cancela_reserva(client_cortador, db_session, client_vendedor, rolo_factory):
+    rolo = rolo_factory(50)
+    reserva = reservar(client_vendedor, rolo, 10)
+    ordem = emitir(client_cortador, rolo, 10, id_reserva=reserva["id_reserva"]).json()
 
-    r = client.patch(f"{ORDENS}/{ordem['id_ordem']}/cancelar")
+    r = client_cortador.patch(f"{ORDENS}/{ordem['id_ordem']}/cancelar")
     assert r.status_code == 200
     assert r.json()["st_ordem"] == "CANCELADA"
     assert r.json()["rolo"]["st_rolo"] == "DISPONIVEL"
     assert db_session.get(ReservaTemporaria, reserva["id_reserva"]).st_reserva == "CANCELADA"
-    assert emitir(client, rolo, 10).status_code == 201  # rolo volta a aceitar ordens
+    assert emitir(client_cortador, rolo, 10).status_code == 201  # rolo volta a aceitar ordens
 
 
-def test_cancelar_ordem_concluida_e_rejeitado(client, novo_rolo, cortador):
-    rolo = novo_rolo(50)
-    ordem = emitir(client, rolo, 10).json()
-    executar(client, ordem["id_ordem"], cortador, 40)
-    assert client.patch(f"{ORDENS}/{ordem['id_ordem']}/cancelar").status_code == 400
+def test_cancelar_ordem_concluida_e_rejeitado(client_cortador, rolo_factory, cortador):
+    rolo = rolo_factory(50)
+    ordem = emitir(client_cortador, rolo, 10).json()
+    executar(client_cortador, ordem["id_ordem"], cortador, 40)
+    assert client_cortador.patch(f"{ORDENS}/{ordem['id_ordem']}/cancelar").status_code == 400
 
 
-def test_listar_ordens_com_filtro(client, novo_rolo):
-    rolo = novo_rolo(50)
-    emitir(client, rolo, 10)
-    r = client.get(ORDENS, params={"st_ordem": "PENDENTE", "id_rolo": rolo["id_rolo"]})
+def test_listar_ordens_com_filtro(client_cortador, rolo_factory):
+    rolo = rolo_factory(50)
+    emitir(client_cortador, rolo, 10)
+    r = client_cortador.get(ORDENS, params={"st_ordem": "PENDENTE", "id_rolo": rolo["id_rolo"]})
     assert r.status_code == 200 and len(r.json()) == 1
