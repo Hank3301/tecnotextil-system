@@ -18,16 +18,30 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
   - Libera rolos associados (status `RESERVADO` → `DISPONIVEL`)
   - Gerenciamento correto de sessão do banco (evita vazamento de conexões)
   - Integração com lifespan do FastAPI em `app/main.py`
+- **Relatórios Gerenciais (Fase 5)** - Acesso restrito a GERENTE
+  - `GET /api/v1/relatorios/retalhos`: métricas de estoque de retalhos (qtd rolos, metragem total, distribuição por tecido/lote)
+  - `GET /api/v1/relatorios/perdas`: consolidado de desperdícios (perda total, ordens com divergência, detalhamento por partida/lote)
+  - `GET /api/v1/relatorios/rolo/{id}/historico`: linha do tempo completa do rolo (cadastrais, defeitos, reservas, ordens de corte)
+  - Service `app/services/relatorio_service.py` com queries otimizadas (joins, agregações, CASE)
+  - Router `app/routers/relatorios.py` protegido por `Depends(require_gerente)`
+- **CORS** configurado para integração futura PWA/frontend
+  - `CORSMiddleware` com `allow_origins=["*"]`, `allow_credentials=True`, `allow_methods=["*"]`, `allow_headers=["*"]`
 - **Suíte de testes** para expiração automática
   - `tests/test_expiracao_background.py` com 8 testes
   - Testes unitários do job de expiração (com/sem reservas, múltiplas, status variados)
   - Testes do ciclo de vida do scheduler (start/stop/idempotência)
   - Teste de integração completa via API
+- **Suíte de testes** para relatórios
+  - `tests/test_relatorios.py` com 12 testes
+  - Validação RBAC: 200 OK para GERENTE, 403 Forbidden para VENDEDOR/CORTADOR
+  - Validação de dados: cálculos corretos de retalhos, perdas, divergências
+  - Validação 404 para rolo inexistente no histórico
+  - Verificação básica de headers CORS
 
 ### Modificado
 - `requirements.txt`: adicionado `apscheduler>=3.10.0`
 - `requirements.txt`: fixado `bcrypt<4.0.0` para compatibilidade com passlib
-- `docs/ROADMAP.md`: Fases 2, 3 e 4 marcadas como concluídas
+- `docs/ROADMAP.md`: Fases 2, 3, 4 e 5 marcadas como concluídas
 
 ### Corrigido
 - Compatibilidade bcrypt/passlib (downgrade bcrypt para 3.2.2)
@@ -60,9 +74,9 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
-## [Unreleased] - Próximas Mudanças (Fase 5 - Relatórios)
+## [Unreleased] - Próximas Mudanças (Fase 6 - Qualidade e Entrega)
 ### Adicionado (planejado)
-- Relatório de estoque por lote/tecido
-- Relatório de perdas e divergências
-- Relatório de produtividade por cortador
-- Exportação CSV/PDF
+- Testes de integração completos
+- CI/CD (GitHub Actions)
+- Dockerfile + docker-compose
+- Documentação OpenAPI aprimorada

@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
 from app.models.models import *  # noqa: F401,F403  (registra as tabelas no metadata)
-from app.routers import vendas, corte, tecidos, lotes, rolos, usuarios
+from app.routers import vendas, corte, tecidos, lotes, rolos, usuarios, relatorios
 from app.auth.router import router as auth_router
 from app.services.background_tasks import scheduler_lifespan
 
@@ -21,8 +22,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="TecnoTêxtil API",
     description="MVP para controle de estoque, vendas por lote e mesa de corte têxtil.",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
+)
+
+# CORS - Permite origens de desenvolvimento para frontend PWA/Web
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Cadastros
@@ -37,6 +47,9 @@ app.include_router(auth_router)
 # Operação
 app.include_router(vendas.router)
 app.include_router(corte.router)
+
+# Relatórios (apenas GERENTE)
+app.include_router(relatorios.router)
 
 
 @app.get("/")

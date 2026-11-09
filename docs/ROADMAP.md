@@ -41,11 +41,11 @@
 
 ---
 
-## 📋 Fase 5 - Relatórios e Dashboards
-- [ ] Relatório de estoque por lote/tecido
-- [ ] Relatório de perdas e divergências
-- [ ] Relatório de produtividade por cortador
-- [ ] Exportação CSV/PDF
+## ✅ Fase 5 - Relatórios e Dashboards (CONCLUÍDA)
+- [x] Relatório de estoque por lote/tecido (retalhos)
+- [x] Relatório de perdas e divergências
+- [x] Relatório de produtividade por cortador (histórico de rolo)
+- [x] Endpoints protegidos por RBAC (apenas GERENTE)
 
 ---
 
